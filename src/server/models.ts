@@ -1,3 +1,12 @@
 export interface HostGameEvent {
-  foo: string;
+  nickname: string;
+}
+
+export interface JoinGameEvent {
+  code: string;
+  nickname: string;
+}
+
+export interface NicknameChangeEvent {
+  nickname: string;
 }
