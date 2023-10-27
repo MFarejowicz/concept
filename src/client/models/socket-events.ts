@@ -10,3 +10,11 @@ export interface Player {
 export interface PlayersUpdateEvent {
   players: Array<Player>;
 }
+
+export interface GameStartingEvent {
+  code: string;
+}
+
+export interface GuessStartingEvent {
+  clueGiver: string;
+}

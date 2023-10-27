@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { uniqueNamesGenerator, Config, adjectives, animals } from "unique-names-generator";
 import { socket } from "./socket";
-import { Player, PlayersUpdateEvent, ServerAckEvent } from "./models";
+import { getNickname } from "./utils";
+import {
+  Player,
+  PlayersUpdateEvent,
+  ServerAckEvent,
+  GameStartingEvent,
+  GuessStartingEvent,
+} from "./models";
 
 import "./App.css";
 
@@ -10,18 +16,13 @@ enum MenuState {
   Host = "host",
   Join = "join",
   Joined = "joined",
+  Game = "game",
 }
-
-const customConfig: Config = {
-  dictionaries: [adjectives, animals],
-  separator: "-",
-  length: 2,
-};
 
 function App() {
   const [menuState, setMenuState] = useState<MenuState>(MenuState.Main);
   const [roomCode, setRoomCode] = useState<string>("");
-  const [nickname, setNickname] = useState<string>(uniqueNamesGenerator(customConfig));
+  const [nickname, setNickname] = useState<string>(getNickname());
   const [players, setPlayers] = useState<Array<Player>>([]);
 
   useEffect(() => {
@@ -31,19 +32,35 @@ function App() {
     }
 
     function handlePlayersUpdate(data: PlayersUpdateEvent) {
-      console.log("players update received");
-      console.log(data);
+      // console.log("players update received");
+      // console.log(data);
 
       const { players } = data;
       setPlayers(players);
     }
 
+    function handleGameStarting(_data: GameStartingEvent) {
+      // console.log("game starting received");
+      // console.log(data);
+
+      setMenuState(MenuState.Game);
+    }
+
+    function handleGuessStarting(data: GuessStartingEvent) {
+      // console.log("guess starting received");
+      console.log(data);
+    }
+
     socket.on("server-ack", handleServerAck);
     socket.on("players-update", handlePlayersUpdate);
+    socket.on("game-starting", handleGameStarting);
+    socket.on("guess-starting", handleGuessStarting);
 
     return () => {
       socket.off("server-ack", handleServerAck);
       socket.off("players-update", handlePlayersUpdate);
+      socket.off("game-starting", handleGameStarting);
+      socket.off("guess-starting", handleGuessStarting);
     };
   }, []);
 
@@ -79,12 +96,20 @@ function App() {
     }
   }, [nickname, roomCode]);
 
+  const startGame = useCallback(() => {
+    socket.emit("start-game");
+  }, []);
+
   const handleNicknameShuffle = useCallback(() => {
-    const newName = uniqueNamesGenerator(customConfig);
+    const newName = getNickname();
 
     socket.emit("nickname-change", { nickname: newName });
 
     setNickname(newName);
+  }, []);
+
+  const setClueGiver = useCallback((random: boolean) => {
+    socket.emit("clue-giver", { random });
   }, []);
 
   const renderMenuState = useCallback(() => {
@@ -110,10 +135,13 @@ function App() {
             </div>
             <div>current players:</div>
             {players.map((player) => (
-              <div key={player.id}>{player.nickname}</div>
+              <div key={player.id}>
+                <span>{player.nickname}</span>
+                {player.nickname === nickname && <span> (YOU!)</span>}
+              </div>
             ))}
             <div>
-              <button>start game</button>
+              <button onClick={startGame}>start game</button>
             </div>
           </>
         );
@@ -137,8 +165,19 @@ function App() {
             </div>
             <div>current players:</div>
             {players.map((player) => (
-              <div key={player.id}>{player.nickname}</div>
+              <div key={player.id}>
+                <span>{player.nickname}</span>
+                {player.nickname === nickname && <span> (YOU!)</span>}
+              </div>
             ))}
+          </>
+        );
+      case MenuState.Game:
+        return (
+          <>
+            <div>this is the game!</div>
+            <button onClick={() => setClueGiver(false)}>be clue giver</button>
+            <button onClick={() => setClueGiver(true)}>random clue giver</button>
           </>
         );
       default:
@@ -152,8 +191,10 @@ function App() {
     nickname,
     handleNicknameShuffle,
     players,
+    startGame,
     handleRoomCodeChange,
     joinGame,
+    setClueGiver,
   ]);
 
   return (

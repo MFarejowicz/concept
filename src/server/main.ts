@@ -6,7 +6,13 @@ import "dotenv/config";
 
 import { Game, games } from "./game";
 import { generateCode } from "./utils";
-import { HostGameEvent, JoinGameEvent, NicknameChangeEvent } from "./models";
+import {
+  ClueGiverEvent,
+  HostGameEvent,
+  JoinGameEvent,
+  NicknameChangeEvent,
+  StartGameEvent,
+} from "./models";
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +34,7 @@ io.on("connection", (socket) => {
   socket.on("host-game", (data: HostGameEvent, ack: (arg: string) => void) => {
     // console.log("host-game");
     // console.log(data);
+
     const { nickname } = data;
 
     const roomCode = generateCode();
@@ -53,14 +60,34 @@ io.on("connection", (socket) => {
   });
 
   socket.on("nickname-change", (data: NicknameChangeEvent) => {
-    const { nickname } = data;
-    const code = socket.data.roomCode;
+    // console.log("nickname-change");
+    // console.log(data);
 
-    const game = games[code];
+    const { nickname } = data;
+
+    const game = Game.fromSocket(socket);
     if (game) {
       game.changePlayerName(socket, nickname);
-    } else {
-      console.log("oops");
+    }
+  });
+
+  socket.on("start-game", (_data: StartGameEvent) => {
+    // console.log("start-game");
+    // console.log(data);
+
+    const game = Game.fromSocket(socket);
+    if (game) {
+      game.startGame();
+    }
+  });
+
+  socket.on("clue-giver", (data: ClueGiverEvent) => {
+    // console.log("clue-giver");
+    // console.log(data);
+
+    const game = Game.fromSocket(socket);
+    if (game) {
+      game.setClueGiver(data.random ? undefined : socket);
     }
   });
 });
