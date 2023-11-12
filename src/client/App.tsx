@@ -1,39 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import useImage from "use-image";
-import { Stage, Layer, Image, Circle } from "react-konva";
+import { Stage as StageT } from "konva/lib/Stage";
+
 import { socket } from "./socket";
-import {
-  Point,
-  getCenter,
-  getDistance,
-  getNickname,
-  getRelativePointerPosition,
-  isTouchEnabled,
-} from "./utils";
+import { Host, Main, Join, Joined, ClueGiverSelect, Guess } from "./screens";
 import {
   Player,
+  Point,
   PlayersUpdateEvent,
   ServerAckEvent,
   GameStartingEvent,
   GuessStartingEvent,
+  MenuState,
 } from "./models";
-
-import thing from "./assets/concept-board.jpeg";
+import { getNickname, getRelativePointerPosition } from "./utils";
 
 import "./App.css";
-import { Stage as StageT } from "konva/lib/Stage";
-import { KonvaEventObject } from "konva/lib/Node";
-
-const SCALE_FACTOR = 1.01;
-
-enum MenuState {
-  Main = "main",
-  Host = "host",
-  Join = "join",
-  Joined = "joined",
-  GameChooseClueGiver = "game-choose-clue-giver",
-  GameGuess = "game-guess",
-}
 
 function App() {
   const [menuState, setMenuState] = useState<MenuState>(MenuState.Main);
@@ -42,18 +23,10 @@ function App() {
   const [players, setPlayers] = useState<Array<Player>>([]);
   const [clueGiver, setClueGiver] = useState<string>("");
 
-  const [image] = useImage(thing);
+  const stageRef = useRef<StageT>(null);
   const [hints, setHints] = useState<Array<Point>>([]);
 
-  const stageRef = useRef<StageT>(null);
-  const lastCenter = useRef<Point | null>(null);
-  const lastDist = useRef<number>(0);
-
   const isClueGiver = nickname === clueGiver;
-  // 20px padding from each side
-  const width = window.innerWidth - 40;
-  // 20px padding from each side + some buffer
-  const height = window.innerHeight - 240;
 
   useEffect(() => {
     function handleServerAck(data: ServerAckEvent) {
@@ -109,11 +82,14 @@ function App() {
     setMenuState(MenuState.Join);
   }, []);
 
-  const handleRoomCodeChange = useCallback((event: React.FormEvent<HTMLInputElement>) => {
-    const newVal = event.currentTarget.value;
+  const handleRoomCodeChange = useCallback(
+    (event: React.FormEvent<HTMLInputElement>) => {
+      const newVal = event.currentTarget.value;
 
-    setRoomCode(newVal.toUpperCase());
-  }, []);
+      setRoomCode(newVal.toUpperCase());
+    },
+    []
+  );
 
   const joinGame = useCallback(async () => {
     const code = roomCode.toUpperCase();
@@ -146,223 +122,65 @@ function App() {
     socket.emit("clue-giver", { random });
   }, []);
 
-  const zoomStage = (event: KonvaEventObject<WheelEvent>) => {
-    event.evt.preventDefault();
-    if (stageRef.current !== null) {
-      const stage = stageRef.current;
-      const oldScale = stage.scaleX();
-      const stagePointer = stage.getPointerPosition();
-      if (!stagePointer) {
-        return;
-      }
-      const { x: pointerX, y: pointerY } = stagePointer;
-      const mousePointTo = {
-        x: (pointerX - stage.x()) / oldScale,
-        y: (pointerY - stage.y()) / oldScale,
-      };
-      const newScale = event.evt.deltaY > 0 ? oldScale * SCALE_FACTOR : oldScale / SCALE_FACTOR;
-      stage.scale({ x: newScale, y: newScale });
-      const newPos = {
-        x: pointerX - mousePointTo.x * newScale,
-        y: pointerY - mousePointTo.y * newScale,
-      };
-      stage.position(newPos);
-      stage.batchDraw();
-    }
-  };
-
-  const handleTouch = (event: KonvaEventObject<TouchEvent>) => {
-    event.evt.preventDefault();
-    const touch1 = event.evt.touches[0];
-    const touch2 = event.evt.touches[1];
-    const stage = stageRef.current;
-    if (stage !== null) {
-      if (touch1 && touch2) {
-        if (stage.isDragging()) {
-          stage.stopDrag();
-        }
-
-        const p1 = {
-          x: touch1.clientX,
-          y: touch1.clientY,
-        };
-        const p2 = {
-          x: touch2.clientX,
-          y: touch2.clientY,
-        };
-
-        if (!lastCenter.current) {
-          lastCenter.current = getCenter(p1, p2);
-          return;
-        }
-        const newCenter = getCenter(p1, p2);
-
-        const dist = getDistance(p1, p2);
-
-        if (!lastDist.current) {
-          lastDist.current = dist;
-        }
-
-        // local coordinates of center point
-        const pointTo = {
-          x: (newCenter.x - stage.x()) / stage.scaleX(),
-          y: (newCenter.y - stage.y()) / stage.scaleX(),
-        };
-
-        const scale = stage.scaleX() * (dist / lastDist.current);
-
-        stage.scaleX(scale);
-        stage.scaleY(scale);
-
-        // calculate new position of the stage
-        const dx = newCenter.x - lastCenter.current.x;
-        const dy = newCenter.y - lastCenter.current.y;
-
-        const newPos = {
-          x: newCenter.x - pointTo.x * scale + dx,
-          y: newCenter.y - pointTo.y * scale + dy,
-        };
-
-        stage.position(newPos);
-        stage.batchDraw();
-
-        lastDist.current = dist;
-        lastCenter.current = newCenter;
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    lastCenter.current = null;
-    lastDist.current = 0;
-  };
-
-  const placeThing = () => {
+  const placeHint = useCallback(() => {
     if (stageRef.current !== null) {
       const stage = stageRef.current;
       const stagePointer = stage.getPointerPosition();
       if (!stagePointer) {
         return;
       }
-      const test = getRelativePointerPosition(stage);
+
+      const transformedStagePointer = getRelativePointerPosition(stage);
       const newHint = {
-        x: test.x,
-        y: test.y,
+        x: transformedStagePointer.x,
+        y: transformedStagePointer.y,
       };
+
       setHints((oldHints) => [...oldHints, newHint]);
     }
-  };
+  }, []);
 
-  const renderMenuState = useCallback(() => {
+  const renderMenuState = () => {
     switch (menuState) {
       case MenuState.Main:
-        return (
-          <>
-            <div>
-              <button onClick={startHost}>host</button>
-            </div>
-            <div>
-              <button onClick={startJoin}>join</button>
-            </div>
-          </>
-        );
+        return <Main startHost={startHost} startJoin={startJoin} />;
       case MenuState.Host:
         return (
-          <>
-            <div>room code: {roomCode}</div>
-            <div>
-              <p>you are: {nickname}</p>
-              <button onClick={handleNicknameShuffle}>shuffle</button>
-            </div>
-            <div>current players:</div>
-            {players.map((player) => (
-              <div key={player.id}>
-                <span>{player.nickname}</span>
-                {player.nickname === nickname && <span> (YOU!)</span>}
-              </div>
-            ))}
-            <div>
-              <button onClick={startGame}>start game</button>
-            </div>
-          </>
+          <Host
+            roomCode={roomCode}
+            nickname={nickname}
+            handleNicknameShuffle={handleNicknameShuffle}
+            players={players}
+            startGame={startGame}
+          />
         );
       case MenuState.Join:
         return (
-          <>
-            <div>
-              <p>enter room code</p>
-              <input value={roomCode} onChange={handleRoomCodeChange}></input>
-              <button onClick={joinGame}>join</button>
-            </div>
-          </>
+          <Join
+            roomCode={roomCode}
+            handleRoomCodeChange={handleRoomCodeChange}
+            joinGame={joinGame}
+          />
         );
       case MenuState.Joined:
         return (
-          <>
-            <div>room code: {roomCode}</div>
-            <div>
-              <p>you are: {nickname}</p>
-              <button onClick={handleNicknameShuffle}>shuffle</button>
-            </div>
-            <div>current players:</div>
-            {players.map((player) => (
-              <div key={player.id}>
-                <span>{player.nickname}</span>
-                {player.nickname === nickname && <span> (YOU!)</span>}
-              </div>
-            ))}
-          </>
+          <Joined
+            roomCode={roomCode}
+            nickname={nickname}
+            handleNicknameShuffle={handleNicknameShuffle}
+            players={players}
+          />
         );
       case MenuState.GameChooseClueGiver:
-        return (
-          <>
-            <div>this is the game!</div>
-            <button onClick={() => chooseClueGiver(false)}>be clue giver</button>
-            <button onClick={() => chooseClueGiver(true)}>random clue giver</button>
-          </>
-        );
+        return <ClueGiverSelect chooseClueGiver={chooseClueGiver} />;
       case MenuState.GameGuess:
         return (
-          <>
-            <div>this is the game!</div>
-            <Stage
-              width={width}
-              height={height}
-              draggable={!isTouchEnabled()}
-              onWheel={zoomStage}
-              onTouchMove={handleTouch}
-              onTouchEnd={handleTouchEnd}
-              ref={stageRef}
-            >
-              <Layer>
-                <Image image={image} onClick={placeThing} />
-                {hints.map((hint, index) => (
-                  <Circle key={index} x={hint.x} y={hint.y} radius={30} fill="red" />
-                ))}
-              </Layer>
-            </Stage>
-          </>
+          <Guess placeHint={placeHint} hints={hints} stageRef={stageRef} />
         );
       default:
         return "oops";
     }
-  }, [
-    menuState,
-    startHost,
-    startJoin,
-    roomCode,
-    nickname,
-    handleNicknameShuffle,
-    players,
-    startGame,
-    handleRoomCodeChange,
-    joinGame,
-    width,
-    height,
-    image,
-    hints,
-    chooseClueGiver,
-  ]);
+  };
 
   return (
     <div className="App">

@@ -1,4 +1,10 @@
-import { Config, adjectives, animals, uniqueNamesGenerator } from "unique-names-generator";
+import {
+  Config,
+  adjectives,
+  animals,
+  uniqueNamesGenerator,
+} from "unique-names-generator";
+import { Point } from "./models";
 
 const customConfig: Config = {
   dictionaries: [adjectives, animals],
@@ -8,11 +14,6 @@ const customConfig: Config = {
 
 export function getNickname() {
   return uniqueNamesGenerator(customConfig);
-}
-
-export interface Point {
-  x: number;
-  y: number;
 }
 
 export function getDistance(p1: Point, p2: Point) {
